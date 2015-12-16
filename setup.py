@@ -5,7 +5,7 @@ description='DMB file parser for python'
 
 setup(
     name='pydmb',
-    version='0.1.0a1',
+    version='0.1.0',
     description=description,
     long_description=description,
     url='https://github.com/baliame/pydmb',
