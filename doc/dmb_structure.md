@@ -41,6 +41,7 @@ flags        | uint32       | Unknown          | 4           |
 * Length: 13
 * Format: binary, little-endian
 * Example: `0100000002000000FFFF0000FF`
+
 Content name | Content type | Assigned meaning               | Byte length |
 ------------ | ------------ | ------------------------------ | ----------- |
 area_id      | uint32       | ID of area of tile             | 4           |
@@ -72,6 +73,7 @@ map_z        | uint16       | Number of Z-levels | 2           |
 * Length: Incalculable. At most, `map_x * map_y * map_z`.
 * Format: binary, little-endian`
 * Contents:
+
 Content name | Content type | Assigned meaning                     | Byte length       | Multiplicity           |
 ------------ | ------------ | ------------------------------------ | ----------------- | ---------------------- |
 map_tile     | map_tile     | Up to 255 tiles defined at once      | 13                | varying (`tile_types`) |
