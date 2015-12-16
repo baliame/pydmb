@@ -23,5 +23,6 @@ setup(
         'Programming Language :: Python :: 3.5',
     ],
     keywords='byond dmb development library',
+    install_requires=[],
     packages=find_packages(),
 )

@@ -1,28 +1,14 @@
-class type:
-    def __init__(self):
-        self.path = 0
-        self.parent = 0
-
-        self.name = 0
-        self.desc = 0
-        self.icon = 0
-        self.icon_state = 0
-        self.dir = 0
-
-        self.text = 0
-
-        self.maptext = 0
-        self.maptext_width = 0
-        self.maptext_height = 0
-
-        self.flags = 0
-        self.variable_list = 0
-        self.layer = 0.0
-        self.builtin_variable_list = 0
+import json
 
 
 class mob:
     pass
+
+
+class resource:
+    def __init__(self, typeid, rhash):
+        self.typeid = typeid
+        self.hash = rhash
 
 
 class proc:
@@ -32,6 +18,12 @@ class proc:
         self.data = 0
         self.variable_list = 0
         self.argument_list = 0
+
+
+class var:
+    def __init__(self):
+        self.value = None,
+        self.name = 0
 
 
 class instance:
@@ -49,9 +41,6 @@ class world_data:
         self.map_y = 0
         self.map_z = 0
 
-
-class extended_world_data:
-    def __init__(self):
         self.default_mob = 0
         self.default_turf = 0
         self.default_area = 0
@@ -85,3 +74,42 @@ class extended_world_data:
         self.icon_width = 0
         self.icon_height = 0
         self.map_format = 0
+
+
+class tile:
+    def __init__(self, area_id=0, turf_id=0, unknown_id=0):
+        self.area_id = area_id
+        self.turf_id = turf_id
+        self.unknown_id = unknown_id
+        self.instances = []
+
+
+class type:
+    def __init__(self, path, parent):
+        self.path = path
+        self.parent = parent
+
+        self.name = 0
+        self.desc = 0
+        self.icon = 0
+        self.icon_state = 0
+        self.dir = 0
+
+        self.text = 0
+
+        self.maptext = 0
+        self.maptext_width = 0
+        self.maptext_height = 0
+
+        self.flags = 0
+        self.variable_list = 0
+        self.layer = 0.0
+        self.builtin_variable_list = 0
+
+    def __json__(self):
+        return {
+            "path": self.path,
+            "name": self.name,
+            "desc": self.desc,
+            "parent": self.parent.path,
+        }
