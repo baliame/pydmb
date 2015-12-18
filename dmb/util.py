@@ -2,6 +2,7 @@ mod8 = 2**8
 mod16 = 2**16
 mod32 = 2**32
 
+
 class ModularInt:
     def __init__(self, value, mod):
         self.value = value % mod

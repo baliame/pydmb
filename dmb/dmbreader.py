@@ -1,4 +1,4 @@
-from .dmb import tile, proc, world_data, var, instance, resource, type as btype
+from .dmb import Tile, Proc, WorldData, Var, Instance, Resource, Type, RawString
 from .tree import ObjectTree
 from .util import ModularInt, mod8
 from . import value
@@ -6,57 +6,6 @@ import re
 import io
 import struct
 import time
-
-
-control_codes = {
-    bytes([0xff, 1]):  b'\\1',
-    bytes([0xff, 2]):  b'\\2',
-    bytes([0xff, 3]):  b'\\3',
-    bytes([0xff, 6]):  b'\\a',
-    bytes([0xff, 7]):  b'\\A',
-    bytes([0xff, 8]):  b'\\the',
-    bytes([0xff, 9]):  b'\\The',
-    bytes([0xff, 10]): b'\\he',
-    bytes([0xff, 11]): b'\\He',
-    bytes([0xff, 12]): b'\\his',
-    bytes([0xff, 13]): b'\\His',
-    bytes([0xff, 16]): b'\\him',
-    bytes([0xff, 17]): b'\\himself',
-    bytes([0xff, 18]): b'\\...',
-    bytes([0xff, 20]): b'\\s',
-    bytes([0xff, 21]): b'\\proper',
-    bytes([0xff, 22]): b'\\improper',
-    bytes([0xff, 23]): b'\\bold',
-    bytes([0xff, 24]): b'\\italic',
-    bytes([0xff, 25]): b'\\underline',
-    bytes([0xff, 27]): b'\\font',
-    bytes([0xff, 28]): b'\\color',
-    bytes([0xff, 31]): b'\\red',
-    bytes([0xff, 32]): b'\\green',
-    bytes([0xff, 33]): b'\\blue',
-    bytes([0xff, 34]): b'\\black',
-    bytes([0xff, 35]): b'\\white',
-    bytes([0xff, 36]): b'\\yellow',
-    bytes([0xff, 37]): b'\\cyan',
-    bytes([0xff, 38]): b'\\magenta',
-    bytes([0xff, 39]): b'\\beep',
-    bytes([0xff, 40]): b'\\link',
-    bytes([0xff, 42]): b'\\ref',
-    bytes([0xff, 43]): b'\\icon',
-}
-
-
-def resolve_control_codes(b):
-    global control_codes
-    for code, replacement in control_codes.items():
-        b = b.replace(code, replacement)
-    ccindex = b.find(bytes([0xff]))
-    if ccindex != -1:
-        if len(b) > ccindex + 1:
-            raise ValueError("Found unhandled control code: {0}".format(b[ccindex + 1]))
-        else:
-            return b'?'
-    return b
 
 
 class DmbFileError(ValueError):
@@ -82,12 +31,7 @@ class StringDecoder:
             return val
 
     def dump(self):
-        d = bytearray(self.reader._nbytes(self.len))
-        for i in range(self.len):
-            d[i] = (d[i] ^ self.key) & 0xFF
-            self.key += 9
-        self.len = 0
-        return bytes(d)
+        return RawString(bytearray(self.reader._nbytes(self.len)), self.key)
 
 
 class TileGenerator:
@@ -101,7 +45,7 @@ class TileGenerator:
     def gen(self, count):
         while self.len > 0 and count > 0:
             if self.curr is None or self.rle_count == 0:
-                self.curr = tile(self.reader._uarch(), self.reader._uarch(), self.reader._uarch())
+                self.curr = Tile(self.reader._uarch(), self.reader._uarch(), self.reader._uarch())
                 self.rle_count = self.reader._uint8()
             self.rle_count -= 1
             self.len -= 1
@@ -111,12 +55,13 @@ class TileGenerator:
 
 
 class Dmb:
-    def __init__(self, dmbname, throttle=0, verbose=0):
+    def __init__(self, dmbname, throttle=False, verbose=False, lazy_resolve=False):
+        self.lazy_resolve = lazy_resolve
         self.reader = open(dmbname, 'rb')
         self.bit32 = False
         self.throttle = throttle
         self.ops = 0
-        self.world = world_data()
+        self.world = WorldData()
         self._parse_version_data()
         if verbose:
             print("Compiled with byond {0} (requires {1} server, {2} client)".format(self.world.world_version, self.world.min_server, self.world.min_client))
@@ -132,7 +77,7 @@ class Dmb:
         self.tiles = [[[tile for tile in tilegen.gen(self.world.map_x)] for j in range(self.world.map_y)] for i in range(self.world.map_z)]
         self._uint32()  # drop this
 
-        self.no_parent_type = btype("/", None)
+        self.no_parent_type = Type("/", None)
 
         type_count = self._uarch()
         if verbose:
@@ -227,15 +172,23 @@ class Dmb:
 
     def _populate_types(self):
         for t in self.types:
-            t.path = self.strings[t.path]
-            try:
-                t.parent = self.types[t.parent]
-            except:
-                t.parent = self.no_parent_type
-            t.name = self._resolve_string(t.name)
-            t.desc = self._resolve_string(t.desc)
+            #if not self.lazy_resolve:
+            self.resolve_type(t)
 
             self.tree.push(t)
+
+    def resolve_type(self, t):
+        if t.resolved:
+            return t
+        t.path = self._resolve_string(t.path)
+        try:
+            t.parent = self._resolve_string(t.parent)
+        except:
+            t.parent = self.no_parent_type
+        t.name = self._resolve_string(t.name)
+        t.desc = self._resolve_string(t.desc)
+        t.resolved = True
+        return t
 
     def tile(self, x, y=None, z=None):
         if isinstance(x, tuple):
@@ -353,10 +306,15 @@ class Dmb:
                 self.ops = 0
 
     def _typegen(self, count):
+        typeid = 0
         while count > 0:
             path = self._uarch()
             parent = self._uarch()
-            curr = btype(path, parent)
+            curr = Type(path, parent)
+
+            curr.id = typeid
+            typeid += 1
+
             curr.name = self._uarch()
             curr.desc = self._uarch()
             curr.icon = self._uarch()
@@ -405,17 +363,11 @@ class Dmb:
             key = ModularInt(c + 2, mod8)
             decoder = StringDecoder(self, key, strlen)
             count -= 1
-            b = decoder.dump()
-            try:
-                temp = resolve_control_codes(b)
-                b = temp
-                string = b.decode('iso-8859-1')
-            except:
-                print("Position {0}".format(hex(c)))
-                print(b)
-                # print([chr(a) for a in list(b)])
-                raise
-            yield string
+            string = decoder.dump()
+            if self.lazy_resolve:
+                yield string
+            else:
+                yield string.decode()
             self._throttle()
 
     def _datagen(self, count):
@@ -431,7 +383,7 @@ class Dmb:
 
     def _procgen(self, count):
         while count > 0:
-            ret = proc()
+            ret = Proc()
             ret.path = self._uarch()
             ret.name = self._uarch()
             self._ffwdarch(10, 6)
@@ -447,7 +399,7 @@ class Dmb:
 
     def _vargen(self, count):
         while count > 0:
-            ret = var()
+            ret = Var()
             typeid = self._uint8()
             typeval = self._uint32()
             ret.name = self._uarch()
@@ -458,7 +410,7 @@ class Dmb:
 
     def _instancegen(self, count):
         while count > 0:
-            ret = instance()
+            ret = Instance()
             typeid = self._uint8()
             typeval = self._uint32()
             ret.initializer = self._uarch()
@@ -486,7 +438,7 @@ class Dmb:
             rhash = self._uint32()
             typeid = self._uint8()
             count -= 1
-            yield resource(typeid, rhash)
+            yield Resource(typeid, rhash)
             self._throttle()
 
     def _bytegen(self, delimiter):
@@ -521,4 +473,9 @@ class Dmb:
     def _resolve_string(self, stringid):
         if stringid == 0xFFFF:
             return None
-        return self.strings[stringid]
+        ret = self.strings[stringid]
+        if isinstance(ret, RawString):
+            val = ret.decode()
+            self.strings[stringid] = val
+            ret = val
+        return ret

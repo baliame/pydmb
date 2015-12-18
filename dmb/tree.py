@@ -1,4 +1,4 @@
-from .dmb import type as btype
+from .dmb import Type
 from . import json as dmbjson
 import json
 
@@ -17,7 +17,7 @@ class ObjectTree:
         for k in currtree:
             if k == '.' and isinstance(currtree[k], dict):
                 old = currtree[k]
-                currtree[k] = btype(old['path'], old['parent'])
+                currtree[k] = Type(old['path'], old['parent'])
                 currtree[k].name = old['name']
                 currtree[k].desc = old['desc']
                 p = currtree[k].parent
