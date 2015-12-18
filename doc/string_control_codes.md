@@ -19,9 +19,11 @@ Second byte | Text macro | Note                                                 
 0x0d        | \His       |                                                                      |
 0x10        | \him       |                                                                      |
 0x11        | \himself   |                                                                      |
+0x12        | \...       |                                                                      |
 0x14        | \s         |                                                                      |
 0x15        | \proper    |                                                                      |
 0x16        | \improper  |                                                                      |
+0x17        | \bold      |                                                                      |
 0x18        | \italic    |                                                                      |
 0x19        | \underline |                                                                      |
 0x1b        | \font      |                                                                      |
@@ -37,3 +39,4 @@ Second byte | Text macro | Note                                                 
 0x27        | \beep      |                                                                      |
 0x28        | \link      |                                                                      |
 0x2a        | \ref       |                                                                      |
+0x2b        | \icon      |                                                                      |

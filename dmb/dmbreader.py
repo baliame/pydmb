@@ -7,6 +7,7 @@ import io
 import struct
 import time
 
+
 control_codes = {
     bytes([0xff, 1]):  b'\\1',
     bytes([0xff, 2]):  b'\\2',
@@ -21,9 +22,11 @@ control_codes = {
     bytes([0xff, 13]): b'\\His',
     bytes([0xff, 16]): b'\\him',
     bytes([0xff, 17]): b'\\himself',
+    bytes([0xff, 18]): b'\\...',
     bytes([0xff, 20]): b'\\s',
     bytes([0xff, 21]): b'\\proper',
     bytes([0xff, 22]): b'\\improper',
+    bytes([0xff, 23]): b'\\bold',
     bytes([0xff, 24]): b'\\italic',
     bytes([0xff, 25]): b'\\underline',
     bytes([0xff, 27]): b'\\font',
@@ -39,10 +42,12 @@ control_codes = {
     bytes([0xff, 39]): b'\\beep',
     bytes([0xff, 40]): b'\\link',
     bytes([0xff, 42]): b'\\ref',
+    bytes([0xff, 43]): b'\\icon',
 }
 
 
 def resolve_control_codes(b):
+    global control_codes
     for code, replacement in control_codes.items():
         b = b.replace(code, replacement)
     ccindex = b.find(bytes([0xff]))
@@ -76,6 +81,14 @@ class StringDecoder:
             self.key += 9
             return val
 
+    def dump(self):
+        d = bytearray(self.reader._nbytes(self.len))
+        for i in range(self.len):
+            d[i] = (d[i] ^ self.key) & 0xFF
+            self.key += 9
+        self.len = 0
+        return bytes(d)
+
 
 class TileGenerator:
     def __init__(self, reader, count):
@@ -88,7 +101,7 @@ class TileGenerator:
     def gen(self, count):
         while self.len > 0 and count > 0:
             if self.curr is None or self.rle_count == 0:
-                self.curr = tile(self.reader._uint32(), self.reader._uint32(), self.reader._uint32())
+                self.curr = tile(self.reader._uarch(), self.reader._uarch(), self.reader._uarch())
                 self.rle_count = self.reader._uint8()
             self.rle_count -= 1
             self.len -= 1
@@ -98,17 +111,22 @@ class TileGenerator:
 
 
 class Dmb:
-    def __init__(self, dmbname, throttle=0):
+    def __init__(self, dmbname, throttle=0, verbose=0):
         self.reader = open(dmbname, 'rb')
         self.bit32 = False
         self.throttle = throttle
         self.ops = 0
         self.world = world_data()
         self._parse_version_data()
+        if verbose:
+            print("Compiled with byond {0} (requires {1} server, {2} client)".format(self.world.world_version, self.world.min_server, self.world.min_client))
 
         flags = self._uint32()
         self.world.map_x, self.world.map_y, self.world.map_z = (self._uint16(), self._uint16(), self._uint16())
-        self.bit32 = flags & 0x40000000 > 0
+        self.bit32 = (flags & 0x40000000) > 0
+
+        if verbose:
+            print("{0}-bit dmb".format(32 if self.bit32 else 16))
 
         tilegen = TileGenerator(self, self.world.map_x * self.world.map_y * self.world.map_z)
         self.tiles = [[[tile for tile in tilegen.gen(self.world.map_x)] for j in range(self.world.map_y)] for i in range(self.world.map_z)]
@@ -117,40 +135,49 @@ class Dmb:
         self.no_parent_type = btype("/", None)
 
         type_count = self._uarch()
-        # print("{0} types".format(type_count), file=sys.stderr)
+        if verbose:
+            print("{0} types".format(type_count))
         self.types = [t for t in self._typegen(type_count)]
 
         mob_count = self._uarch()
-        # print("{0} mobs".format(mob_count), file=sys.stderr)
+        if verbose:
+            print("{0} mobs".format(mob_count))
         [m for m in self._mobgen(mob_count)]  # skip mobs
 
         string_count = self._uarch()
-        # print("{0} strings".format(string_count), file=sys.stderr)
+        if verbose:
+            print("{0} strings".format(string_count))
         self.strings = [s for s in self._stringgen(string_count)]
         self._uint32()  # CRC
 
         data_count = self._uarch()
-        # print("{0} data".format(data_count), file=sys.stderr)
+        if verbose:
+            print("{0} data".format(data_count))
         self.data = [d for d in self._datagen(data_count)]
 
         proc_count = self._uarch()
-        # print("{0} procs".format(proc_count), file=sys.stderr)
+        if verbose:
+            print("{0} procs".format(proc_count))
         self.procs = [p for p in self._procgen(proc_count)]
 
         var_count = self._uarch()
-        # print("{0} vars".format(var_count), file=sys.stderr)
+        if verbose:
+            print("{0} vars".format(var_count))
         self.vars = [v for v in self._vargen(var_count)]
 
         argproc_count = self._uarch()
-        # print("{0} argprocs".format(argproc_count), file=sys.stderr)
+        if verbose:
+            print("{0} argprocs".format(argproc_count))
         self.argprocs = [v for v in self._argprocgen(argproc_count)]
 
         instance_count = self._uarch()
-        # print("{0} instances".format(instance_count), file=sys.stderr)
+        if verbose:
+            print("{0} instances".format(instance_count))
         self.instances = [i for i in self._instancegen(instance_count)]
 
         mappop_count = self._uarch()
-        # print("{0} mappops".format(mappop_count), file=sys.stderr)
+        if verbose:
+            print("{0} mappops".format(mappop_count))
         self._populate_map(mappop_count)
 
         self._parse_extended_data()
@@ -340,7 +367,7 @@ class Dmb:
                 self._ffwd(4)
             curr.text = self._uarch()
             self._uarch()  # suffix
-            self._ffwdarch(8, 0)
+            self._ffwdarch(8, 6)
             curr.flags = self._uint32()
             self._ffwdarch(16, 8)
             curr.variable_list = self._uarch()
@@ -377,16 +404,16 @@ class Dmb:
             key = ModularInt(c + 2, mod8)
             decoder = StringDecoder(self, key, strlen)
             count -= 1
-            b = bytes([k for k in decoder])
+            b = decoder.dump()
             try:
-                b = resolve_control_codes(b)
+                temp = resolve_control_codes(b)
+                b = temp
                 string = b.decode('iso-8859-1')
             except:
                 print("Position {0}".format(hex(c)))
                 print(b)
                 # print([chr(a) for a in list(b)])
                 raise
-            # print(string)
             yield string
             self._throttle()
 
@@ -476,5 +503,16 @@ class Dmb:
     def _read_bytes_until(self, delimiter):
         return b''.join([b for b in self._bytegen(delimiter)])
 
+    def _resolve_proc(self, procid):
+        try:
+            return self.procs[procid]
+        except:
+            print(procid)
+            raise
+
     def _resolve_instance(self, instanceid):
-        return self.instances[instanceid]
+        try:
+            return self.instances[instanceid]
+        except:
+            print(instanceid)
+            raise
