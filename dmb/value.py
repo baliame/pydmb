@@ -62,6 +62,11 @@ class value_proc(compiled_value):
         self.value = value
 
 
+class value_image(compiled_value):
+    def __init__(self, typeid, value):
+        self.value = value
+
+
 class value_unknown(compiled_value):
     def __init__(self, typeid, value):
         self.typeid = typeid
@@ -83,10 +88,12 @@ decode_map = {
     42: value_number,
     59: value_client_type,
     62: value_list,
+    63: value_image,
 }
 
 
 def decode(typeid, value):
+    global decode_map
     if typeid in decode_map:
         return decode_map[typeid](typeid, value)
     return value_unknown(typeid, value)

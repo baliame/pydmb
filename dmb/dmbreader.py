@@ -175,7 +175,7 @@ class Dmb:
             print("{0} instances".format(instance_count))
         self.instances = [i for i in self._instancegen(instance_count)]
 
-        mappop_count = self._uarch()
+        mappop_count = self._uint32()
         if verbose:
             print("{0} mappops".format(mappop_count))
         self._populate_map(mappop_count)
@@ -232,8 +232,9 @@ class Dmb:
                 t.parent = self.types[t.parent]
             except:
                 t.parent = self.no_parent_type
-            t.name = self.strings[t.name]
-            t.desc = self.strings[t.desc]
+            t.name = self._resolve_string(t.name)
+            t.desc = self._resolve_string(t.desc)
+
             self.tree.push(t)
 
     def tile(self, x, y=None, z=None):
@@ -516,3 +517,8 @@ class Dmb:
         except:
             print(instanceid)
             raise
+
+    def _resolve_string(self, stringid):
+        if stringid == 0xFFFF:
+            return None
+        return self.strings[stringid]
