@@ -37,7 +37,7 @@ class TileGenerator:
 
 class Dmb:
     def __init__(self, dmbname, throttle=False, verbose=False, string_mode=constants.string_mode_strings, check_string_crc=False, fully_populate_types=False):
-        self.string_mode = constants.string_mode_strings
+        self.string_mode = string_mode
         self.check_string_crc = check_string_crc
         self.fully_populate_types = fully_populate_types
         self.reader = open(dmbname, 'rb')
@@ -144,7 +144,7 @@ class Dmb:
         elif isinstance(string, (bytes, bytearray)) and self.string_mode == constants.string_mode_strings:
             string = RawString(string, 0, mode=constants.raw_string_mode_decrypted, lazy=True).decode()
         self.strings.append(string)
-        return self.strings.len - 1
+        return len(self.strings) - 1
 
     def _shift_coords(self, move_count, x, y, z):
         x += move_count

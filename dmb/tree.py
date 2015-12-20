@@ -32,7 +32,10 @@ class ObjectTree:
         return self.tree.__iter__()
 
     def push(self, typeinst):
-        path = typeinst.path.split('/')
+        try:
+            path = typeinst.path.split('/')
+        except:
+            path = bytes(typeinst.path).split(b'/')
         curr_tree = self.tree
         for part in path[1:]:
             if part not in curr_tree:

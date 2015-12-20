@@ -191,20 +191,20 @@ class DmbWriter:
         s = (strlen ^ self._ffwd(0)) & 65535
         self._uint16(s)
 
-    def _crc(self, b):
-        self.strcrc = byond32(self.strcrc, b, null_terminate=True)
+    def _crc(self, b, curr):
+        return byond32(curr, b, null_terminate=True)
 
     def _write_strings(self):
-        self.strcrc = np.uint32(0xFFFFFFFF)
+        strcrc = np.uint32(0xFFFFFFFF)
         string_count = len(self.dmb.strings)
         self._uarch(string_count)
         for s in self.strings:
-            self._crc(s)
+            strcrc = self._crc(s, strcrc)
             self._write_string_length(len(s))
             s = RawString(s, self._ffwd(0), mode=constants.raw_string_mode_decrypted, lazy=True)
             data = s.encrypt(True)
             self._bytes(data)
-        self._uint32(self.strcrc)
+        self._uint32(strcrc)
 
     def _write_mobs(self):
         mob_count = len(self.dmb.mobs)
@@ -344,15 +344,10 @@ class DmbWriter:
         self._uint16(self.written_world.map_format)
 
     def write(self):
-        f = open('strlist.txt', 'wb')
         if self.dmb.string_mode == constants.string_mode_strings:
             self.strings = [RawString(s, 0, mode=constants.raw_string_mode_string, lazy=True).encode() for s in self.dmb.strings]
-            for strb in self.strings:
-                f.write(strb)
-                f.write(b'\x0A')
         else:
             self.strings = self.dmb.strings
-        f.close()
         self.string_mem_len = 0
         for s in self.strings:
             self.string_mem_len += len(s) + 1
