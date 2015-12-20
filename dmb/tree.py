@@ -70,5 +70,8 @@ class ObjectTree:
             "options": options,
         }
 
+    def populate_variables(self, dmb):
+        pass
+
     def __repr__(self):
         return self.json()

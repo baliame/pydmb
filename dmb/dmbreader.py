@@ -1,7 +1,10 @@
-from .dmb import Tile, Proc, WorldData, Var, Instance, Resource, Type, RawString
+from .dmb import Tile, Mob, Proc, WorldData, Var, Instance, Resource, Type, RawString
+from .dmbwriter import DmbWriter
 from .tree import ObjectTree
-from .util import ModularInt, mod8
-from . import value
+from . import value, constants
+from .crypt import byond32
+from blist import *
+import numpy as np
 import re
 import io
 import struct
@@ -10,28 +13,6 @@ import time
 
 class DmbFileError(ValueError):
     pass
-
-
-class StringDecoder:
-    def __init__(self, reader, key, count):
-        self.reader = reader
-        self.key = key
-        self.len = count
-
-    def __iter__(self):
-        return self
-
-    def __next__(self):
-        if self.len <= 0:
-            raise StopIteration
-        else:
-            self.len -= 1
-            val = (self.reader._uint8() ^ self.key) & 0xFF
-            self.key += 9
-            return val
-
-    def dump(self):
-        return RawString(bytearray(self.reader._nbytes(self.len)), self.key)
 
 
 class TileGenerator:
@@ -45,18 +26,20 @@ class TileGenerator:
     def gen(self, count):
         while self.len > 0 and count > 0:
             if self.curr is None or self.rle_count == 0:
-                self.curr = Tile(self.reader._uarch(), self.reader._uarch(), self.reader._uarch())
+                self.curr = (self.reader._uarch(), self.reader._uarch(), self.reader._uarch())
                 self.rle_count = self.reader._uint8()
             self.rle_count -= 1
             self.len -= 1
             count -= 1
             self.calls += 1
-            yield self.curr
+            yield Tile(self.curr[0], self.curr[1], self.curr[2])
 
 
 class Dmb:
-    def __init__(self, dmbname, throttle=False, verbose=False, lazy_resolve=False):
-        self.lazy_resolve = lazy_resolve
+    def __init__(self, dmbname, throttle=False, verbose=False, string_mode=constants.string_mode_strings, check_string_crc=False, fully_populate_types=False):
+        self.string_mode = constants.string_mode_strings
+        self.check_string_crc = check_string_crc
+        self.fully_populate_types = fully_populate_types
         self.reader = open(dmbname, 'rb')
         self.bit32 = False
         self.throttle = throttle
@@ -66,9 +49,9 @@ class Dmb:
         if verbose:
             print("Compiled with byond {0} (requires {1} server, {2} client)".format(self.world.world_version, self.world.min_server, self.world.min_client))
 
-        flags = self._uint32()
+        self.flags = self._uint32()
         self.world.map_x, self.world.map_y, self.world.map_z = (self._uint16(), self._uint16(), self._uint16())
-        self.bit32 = (flags & 0x40000000) > 0
+        self.bit32 = (self.flags & 0x40000000) > 0
 
         if verbose:
             print("{0}-bit dmb".format(32 if self.bit32 else 16))
@@ -82,43 +65,49 @@ class Dmb:
         type_count = self._uarch()
         if verbose:
             print("{0} types".format(type_count))
-        self.types = [t for t in self._typegen(type_count)]
+        self.types = blist([t for t in self._typegen(type_count)])
 
         mob_count = self._uarch()
         if verbose:
             print("{0} mobs".format(mob_count))
-        [m for m in self._mobgen(mob_count)]  # skip mobs
+        self.mobs = blist([m for m in self._mobgen(mob_count)])
 
+        self.strcrc = np.uint32(0)
         string_count = self._uarch()
         if verbose:
             print("{0} strings".format(string_count))
-        self.strings = [s for s in self._stringgen(string_count)]
-        self._uint32()  # CRC
+        self.strings = blist([s for s in self._stringgen(string_count)])
+        crc = self._uint32()  # CRC
+        if self.check_string_crc:
+            if crc != self.strcrc:
+                raise DmbFileError("String table CRC mismatch (expected: {0}, got: {1})".format(crc, self.strcrc))
+            elif verbose:
+                print("String table CRC check passed.")
 
         data_count = self._uarch()
         if verbose:
             print("{0} data".format(data_count))
-        self.data = [d for d in self._datagen(data_count)]
+        self.data = blist([d for d in self._datagen(data_count)])
 
         proc_count = self._uarch()
         if verbose:
             print("{0} procs".format(proc_count))
-        self.procs = [p for p in self._procgen(proc_count)]
+        self.procs = blist([p for p in self._procgen(proc_count)])
 
         var_count = self._uarch()
         if verbose:
             print("{0} vars".format(var_count))
-        self.vars = [v for v in self._vargen(var_count)]
+        self.variables = blist([v for v in self._vargen(var_count)])
 
         argproc_count = self._uarch()
         if verbose:
             print("{0} argprocs".format(argproc_count))
-        self.argprocs = [v for v in self._argprocgen(argproc_count)]
+        self.argprocs = blist([v for v in self._argprocgen(argproc_count)])
 
         instance_count = self._uarch()
         if verbose:
             print("{0} instances".format(instance_count))
-        self.instances = [i for i in self._instancegen(instance_count)]
+        self.instances = blist([i for i in self._instancegen(instance_count)])
 
         mappop_count = self._uint32()
         if verbose:
@@ -128,18 +117,34 @@ class Dmb:
         self._parse_extended_data()
 
         res_count = self._uarch()
-        # print("{0} resources".format(res_count), file=sys.stderr)
-        self.resources = [r for r in self._resourcegen(res_count)]
+        print("{0} resources".format(res_count))
+        self.resources = blist([r for r in self._resourcegen(res_count)])
 
         self.reader.close()
         self.reader = None
         self.tree = ObjectTree()
 
         self._populate_types()
+        if self.fully_populate_types:
+            self.tree.populate_variables(self)
 
     def __del__(self):
         if self.reader is not None:
             self.reader.close()
+
+    def insert_string(self, string):
+        print("Inserted string '{0}'".format(string))
+        def_string = ""
+        if self.string_mode == constants.string_mode_byte_strings:
+            def_string = b''
+        while len(self.strings) >= 0xFF00 and len(self.strings) < 0xFFFF:
+            self.strings.append(def_string)
+        if isinstance(string, str) and self.string_mode == constants.string_mode_byte_strings:
+            string = RawString(string, 0, mode=constants.raw_string_mode_string, lazy=True).encode()
+        elif isinstance(string, (bytes, bytearray)) and self.string_mode == constants.string_mode_strings:
+            string = RawString(string, 0, mode=constants.raw_string_mode_decrypted, lazy=True).decode()
+        self.strings.append(string)
+        return self.strings.len - 1
 
     def _shift_coords(self, move_count, x, y, z):
         x += move_count
@@ -167,15 +172,17 @@ class Dmb:
         tile = self.tile(x, y, z)
         for move_count, instanceid in self._mappopgen(count):
             if move_count > 0:
-                tile = self.tile(self._shift_coords(move_count, x, y, z))
+                x, y, z = self._shift_coords(move_count, x, y, z)
+                tile = self.tile(x, y, z)
             tile.instances.append(self._resolve_instance(instanceid))
 
     def _populate_types(self):
         for t in self.types:
-            #if not self.lazy_resolve:
             self.resolve_type(t)
-
             self.tree.push(t)
+
+    def _unpack_arch(self, bs):
+        return struct.unpack("<" + (("I" if self.bit32 else "H") * int(len(bs) / (4 if self.bit32 else 2))), bs)
 
     def resolve_type(self, t):
         if t.resolved:
@@ -187,6 +194,20 @@ class Dmb:
             t.parent = self.no_parent_type
         t.name = self._resolve_string(t.name)
         t.desc = self._resolve_string(t.desc)
+        # try:
+        #    vl = self._unpack_arch(self.data[t.variable_list])
+        #    print(t.path, self.data[t.variable_list], "->", vl)
+        #    skip = False
+        #    for vid in vl:
+        #        if skip:
+        #            skip = False
+        #            continue
+        #        print("*", self._resolve_string(self.variables[vid].name))
+        #        skip = True
+        #    # print([self._resolve_string(i) for i in self._unpack_arch(self.data[t.variable_list])])
+        # except:
+        #    if t.variable_list != 65535:
+        #        raise
         t.resolved = True
         return t
 
@@ -220,6 +241,12 @@ class Dmb:
 
     def _nbytes(self, n):
         return self.reader.read(n)
+
+    def _nbytesarch(self, n32, n16):
+        read = n16
+        if self.bit32:
+            read = n32
+        return self._nbytes(read)
 
     def _float32(self):
         b = self.reader.read(4)
@@ -298,6 +325,10 @@ class Dmb:
         self.world.icon_height = self._uint16()
         self.world.map_format = self._uint16()
 
+    def write(self, dmbname):
+        writer = DmbWriter(dmbname, self)
+        writer.write()
+
     def _throttle(self):
         if self.throttle:
             self.ops += 1
@@ -321,20 +352,20 @@ class Dmb:
             curr.icon_state = self._uarch()
             curr.dir = self._uint8()
 
-            unknown = self._uint8()
-            if unknown == 15:
-                self._ffwd(4)
+            curr._unknown1 = self._uint8()
+            if curr._unknown1 == 15:
+                curr._fdata1 = self._nbytes(4)
             curr.text = self._uarch()
-            self._uarch()  # suffix
-            self._ffwdarch(8, 6)
+            curr.suffix = self._uarch()  # suffix
+            curr._fdata2 = self._nbytesarch(8, 6)
             curr.flags = self._uint32()
-            self._ffwdarch(16, 8)
+            curr._fdata3 = self._nbytesarch(16, 8)
             curr.variable_list = self._uarch()
             curr.layer = self._float32()
             if self.world.min_client >= 500:
-                unknown = self._uint8()
-                if unknown > 0:
-                    self._ffwd(24)
+                curr._unknown2 = self._uint8()
+                if curr._unknown2 > 0:
+                    curr._fdata4 = self._nbytes(24)
             curr.builtin_variable_list = self._uarch()
             count -= 1
             yield curr
@@ -342,31 +373,38 @@ class Dmb:
 
     def _mobgen(self, count):
         while count > 0:
-            self._ffwdarch(8, 4)
-            unknown = self._uint8()
-            if (unknown & 0x80) > 0:
-                self._ffwd(6)
+            mob = Mob()
+            mob._fdata1 = self._nbytesarch(8, 4)
+            mob._unknown = self._uint8()
+            if (mob._unknown & 0x80) > 0:
+                mob._fdata2 = self._nbytes(6)
             count -= 1
-            yield True
+            yield mob
             self._throttle()
+
+    def _crc(self, b):
+        self.strcrc = byond32(self.strcrc, b, null_terminate=True)
 
     def _stringgen(self, count):
         while count > 0:
             c = self.reader.seek(0, io.SEEK_CUR)
-            strlen = (self._uint16() ^ c) & 65535
+            lb = self._uint16()
+            strlen = (lb ^ c) & 65535
             lastread = strlen
             while strlen == 65535:
                 c += 2
                 lastread = self._uint16()
                 nextd = (lastread ^ c) & 65535
                 strlen += nextd
-            key = ModularInt(c + 2, mod8)
-            decoder = StringDecoder(self, key, strlen)
+            key = c + 2
             count -= 1
-            string = decoder.dump()
-            if self.lazy_resolve:
-                yield string
-            else:
+            estr = self._nbytes(strlen)
+            string = RawString(bytearray(estr), key, lazy=True)
+            if self.check_string_crc:
+                self._crc(string.decrypt())
+            if self.string_mode == constants.string_mode_byte_strings:
+                yield string.decrypt()
+            elif self.string_mode == constants.string_mode_strings:
                 yield string.decode()
             self._throttle()
 
@@ -386,10 +424,10 @@ class Dmb:
             ret = Proc()
             ret.path = self._uarch()
             ret.name = self._uarch()
-            self._ffwdarch(10, 6)
-            unknown = self._uint8()
-            if unknown & 0x80 > 0:
-                self._ffwd(5)
+            ret._fdata1 = self._nbytesarch(10, 6)
+            ret._unknown = self._uint8()
+            if ret._unknown & 0x80 > 0:
+                ret._fdata2 = self._nbytes(5)
             ret.data = self._uarch()
             ret.variable_list = self._uarch()
             ret.argument_list = self._uarch()
@@ -475,7 +513,7 @@ class Dmb:
             return None
         ret = self.strings[stringid]
         if isinstance(ret, RawString):
-            val = ret.decode()
+            val = ret.decrypt()
             self.strings[stringid] = val
             ret = val
         return ret

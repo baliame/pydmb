@@ -1,3 +1,4 @@
+from .constants import *
 from .dmbreader import *
 from .dmb import *
 from .value import *

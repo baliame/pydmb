@@ -1,74 +1,88 @@
 class compiled_value():
-    pass
+    def __init__(self, typeid, value):
+        self._typeid = typeid
+        self._value = value
 
 
 class value_null(compiled_value):
-    def __init__(self, typeid, value):
-        pass
+    pass
 
 
 class value_mob(compiled_value):
     def __init__(self, typeid, value):
+        super().__init__(typeid, value)
         self.value = value
 
 
 class value_resource(compiled_value):
     def __init__(self, typeid, value):
+        super().__init__(typeid, value)
         self.value = value
 
 
 class value_type(compiled_value):
     def __init__(self, typeid, value):
+        super().__init__(typeid, value)
         self.value = value
 
 
 class value_savefile_type(compiled_value):
     def __init__(self, typeid, value):
+        super().__init__(typeid, value)
         pass
 
 
 class value_file_type(compiled_value):
     def __init__(self, typeid, value):
+        super().__init__(typeid, value)
         pass
 
 
 class value_list_type(compiled_value):
     def __init__(self, typeid, value):
+        super().__init__(typeid, value)
         pass
 
 
 class value_client_type(compiled_value):
     def __init__(self, typeid, value):
+        super().__init__(typeid, value)
         pass
 
 
 class value_string(compiled_value):
     def __init__(self, typeid, value):
+        super().__init__(typeid, value)
         self.value = value
 
 
 class value_number(compiled_value):
     def __init__(self, typeid, value):
+        super().__init__(typeid, value)
         self.value = value
 
 
 class value_list(compiled_value):
     def __init__(self, typeid, value):
+        super().__init__(typeid, value)
         self.value = value
 
 
 class value_proc(compiled_value):
     def __init__(self, typeid, value):
+        super().__init__(typeid, value)
         self.value = value
 
 
 class value_image(compiled_value):
     def __init__(self, typeid, value):
+        super().__init__(typeid, value)
         self.value = value
 
 
 class value_unknown(compiled_value):
     def __init__(self, typeid, value):
+        super().__init__(typeid, value)
         self.typeid = typeid
         self.value = value
 

@@ -1,82 +1,122 @@
 import json
+import collections
+from . import constants
 
 
-control_codes = {
-    bytes([0xff, 1]):  b'\\1',
-    bytes([0xff, 2]):  b'\\2',
-    bytes([0xff, 3]):  b'\\3',
-    bytes([0xff, 6]):  b'\\a',
-    bytes([0xff, 7]):  b'\\A',
-    bytes([0xff, 8]):  b'\\the',
-    bytes([0xff, 9]):  b'\\The',
-    bytes([0xff, 10]): b'\\he',
-    bytes([0xff, 11]): b'\\He',
-    bytes([0xff, 12]): b'\\his',
-    bytes([0xff, 13]): b'\\His',
-    bytes([0xff, 16]): b'\\him',
-    bytes([0xff, 17]): b'\\himself',
-    bytes([0xff, 18]): b'\\...',
-    bytes([0xff, 20]): b'\\s',
-    bytes([0xff, 21]): b'\\proper',
-    bytes([0xff, 22]): b'\\improper',
-    bytes([0xff, 23]): b'\\bold',
-    bytes([0xff, 24]): b'\\italic',
-    bytes([0xff, 25]): b'\\underline',
-    bytes([0xff, 27]): b'\\font',
-    bytes([0xff, 28]): b'\\color',
-    bytes([0xff, 31]): b'\\red',
-    bytes([0xff, 32]): b'\\green',
-    bytes([0xff, 33]): b'\\blue',
-    bytes([0xff, 34]): b'\\black',
-    bytes([0xff, 35]): b'\\white',
-    bytes([0xff, 36]): b'\\yellow',
-    bytes([0xff, 37]): b'\\cyan',
-    bytes([0xff, 38]): b'\\magenta',
-    bytes([0xff, 39]): b'\\beep',
-    bytes([0xff, 40]): b'\\link',
-    bytes([0xff, 42]): b'\\ref',
-    bytes([0xff, 43]): b'\\icon',
-}
+control_codes = collections.OrderedDict()
+control_codes[bytes([0xff, 17])] = b'\\himself'
+control_codes[bytes([0xff, 1])] = b'\\1'
+control_codes[bytes([0xff, 2])] = b'\\2'
+control_codes[bytes([0xff, 3])] = b'\\3'
+control_codes[bytes([0xff, 6])] = b'\\a'
+control_codes[bytes([0xff, 7])] = b'\\A'
+control_codes[bytes([0xff, 8])] = b'\\the'
+control_codes[bytes([0xff, 9])] = b'\\The'
+control_codes[bytes([0xff, 10])] = b'\\he'
+control_codes[bytes([0xff, 11])] = b'\\He'
+control_codes[bytes([0xff, 12])] = b'\\his'
+control_codes[bytes([0xff, 13])] = b'\\His'
+control_codes[bytes([0xff, 16])] = b'\\him'
+control_codes[bytes([0xff, 18])] = b'\\...'
+control_codes[bytes([0xff, 20])] = b'\\s'
+control_codes[bytes([0xff, 21])] = b'\\proper'
+control_codes[bytes([0xff, 22])] = b'\\improper'
+control_codes[bytes([0xff, 23])] = b'\\bold'
+control_codes[bytes([0xff, 24])] = b'\\italic'
+control_codes[bytes([0xff, 25])] = b'\\underline'
+control_codes[bytes([0xff, 27])] = b'\\font'
+control_codes[bytes([0xff, 28])] = b'\\color'
+control_codes[bytes([0xff, 31])] = b'\\red'
+control_codes[bytes([0xff, 32])] = b'\\green'
+control_codes[bytes([0xff, 33])] = b'\\blue'
+control_codes[bytes([0xff, 34])] = b'\\black'
+control_codes[bytes([0xff, 35])] = b'\\white'
+control_codes[bytes([0xff, 36])] = b'\\yellow'
+control_codes[bytes([0xff, 37])] = b'\\cyan'
+control_codes[bytes([0xff, 38])] = b'\\magenta'
+control_codes[bytes([0xff, 39])] = b'\\beep'
+control_codes[bytes([0xff, 40])] = b'\\link'
+control_codes[bytes([0xff, 42])] = b'\\ref'
+control_codes[bytes([0xff, 43])] = b'\\icon'
 
 
 class RawString:
-    def __init__(self, byte, key):
-        self.len = len(byte)
-        self.data = byte
+    def __init__(self, byte, key, mode=constants.raw_string_mode_encrypted, lazy=False):
         self.key = key
-        self.orig_data = byte
         self.orig_key = key
-        self.decoded = False
+        if mode == constants.raw_string_mode_encrypted:
+            self.orig_data = byte
+            self.data = None
+            self.string = None
+            if not lazy:
+                self.decrypt(True)
+                self.decode(True)
+        elif mode == constants.raw_string_mode_decrypted:
+            self.data = byte
+            self.string = None
+            self.orig_data = None
+            if not lazy:
+                self.encrypt(True)
+                self.decode(True)
+        elif mode == constants.raw_string_mode_string:
+            self.string = byte
+            self.data = None
+            self.orig_data = None
+            if not lazy:
+                self.encrypt(True)
+                self.encode(True)
 
-    def decode(self):
-        if not self.decoded:
-            for i in range(self.len):
-                self.data[i] = (self.data[i] ^ self.key) & 0xFF
-                self.key += 9
-            self.len = 0
+    # orig_data (encrypted bytes) -> data (decrypted bytes)
+    def decrypt(self, force=False):
+        if not force and self.data is not None:
+            return self.data
+        self.data = bytearray(self.orig_data)
+        for i in range(len(self.orig_data)):
+            self.data[i] = (self.orig_data[i] ^ self.key) & 0xFF
+            self.key += 9
+        return self.data
+
+    # data (decrypted bytes) -> orig_data (encrypted bytes)
+    def encrypt(self, force=False):
+        if self.data is None:
+            self.encode()
+        if not force and self.orig_data is not None:
+            return self.orig_data
+        self.orig_data = bytearray(self.data)
+        for i in range(len(self.data)):
+            self.orig_data[i] = (self.data[i] ^ self.key) & 0xFF
+            self.key += 9
+        return self.orig_data
+
+    # data (decrypted bytes) -> string (human-readable string)
+    def decode(self, force=False):
+        if self.data is None:
+            self.decrypt()
+        if self.string is None or force:
+            temp = bytearray(self.data)
             for code, replacement in control_codes.items():
-                self.data = self.data.replace(code, replacement)
-            ccindex = self.data.find(bytes([0xff]))
+                temp = temp.replace(code, replacement)
+            ccindex = temp.find(bytes([0xff]))
             if ccindex != -1:
-                if len(self.data) > ccindex + 1:
+                if len(temp) > ccindex + 1:
                     raise ValueError("Found unhandled control code: {0}".format(self.data[ccindex + 1]))
                 else:
-                    return b'?'
-            self.data = self.data.decode('iso-8859-1')
-            self.decoded = True
-        return self.data
+                    return "?"
+            self.string = temp.decode('iso-8859-1')
+            self.key = self.orig_key
+        return self.string
 
-    def encode(self):
-        if self.decoded:
-            self.data = self.data.encode('iso-8859-1')
-            for i in range(self.len):
-                self.data[i] = (self.data[i] ^ self.key) & 0xFF
-                self.key += 9
-            self.len = 0
+    # string (human-readable string) -> data (decrypted bytes)
+    def encode(self, force=False):
+        if self.data is None or force:
+            self.data = self.string.encode('iso-8859-1')
             for code, replacement in control_codes.items():
                 self.data = self.data.replace(replacement, code)
-            self.decoded = False
+            self.key = self.orig_key
         return self.data
+
+    def __bytes__(self):
+        return self.decrypt()
 
     def __str__(self):
         return self.decode()
@@ -86,7 +126,10 @@ class RawString:
 
 
 class Mob:
-    pass
+    def __init__(self):
+        self._unknown = 0
+        self._fdata1 = 0
+        self._fdata2 = 0
 
 
 class Resource:
@@ -102,6 +145,10 @@ class Proc:
         self.data = 0
         self.variable_list = 0
         self.argument_list = 0
+
+        self._unknown = 0
+        self._fdata1 = 0
+        self._fdata2 = 0
 
 
 class Var:
@@ -162,9 +209,9 @@ class WorldData:
 
 class Tile:
     def __init__(self, area_id=0, turf_id=0, unknown_id=0):
-        self.area_id = area_id
-        self.turf_id = turf_id
-        self.unknown_id = unknown_id
+        self.area = area_id
+        self.turf = turf_id
+        self.unknown = unknown_id
         self.instances = []
 
 
@@ -192,6 +239,15 @@ class Type:
 
         self.id = 0
         self.resolved = False
+
+        self._unknown1 = 0
+        self._unknown2 = 0
+        self._fdata1 = 0
+        self._fdata2 = 0
+        self._fdata3 = 0
+        self._fdata4 = 0
+
+        self.variables = []
 
     def __json__(self):
         return {
