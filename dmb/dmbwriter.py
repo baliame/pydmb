@@ -5,6 +5,7 @@ from .crypt import byond32
 import copy
 import numpy as np
 import io
+from blist import blist
 
 
 class DmbWriter:
@@ -363,8 +364,8 @@ class DmbWriter:
         self._write_types()
         self._write_mobs()
 
-        self.written_procs = [self._prep_proc_copy(proc) for proc in self.dmb.procs]
-        self.written_vars = [self._prep_var_copy(proc) for proc in self.dmb.variables]
+        self.written_procs = blist([self._prep_proc_copy(proc) for proc in self.dmb.procs])
+        self.written_vars = blist([self._prep_var_copy(proc) for proc in self.dmb.variables])
         self.written_world = self._prep_world_data()
 
         self._write_strings()

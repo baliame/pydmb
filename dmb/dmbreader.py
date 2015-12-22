@@ -117,7 +117,8 @@ class Dmb:
         self._parse_extended_data()
 
         res_count = self._uarch()
-        print("{0} resources".format(res_count))
+        if verbose:
+            print("{0} resources".format(res_count))
         self.resources = blist([r for r in self._resourcegen(res_count)])
 
         self.reader.close()
@@ -133,11 +134,10 @@ class Dmb:
             self.reader.close()
 
     def insert_string(self, string):
-        print("Inserted string '{0}'".format(string))
         def_string = ""
         if self.string_mode == constants.string_mode_byte_strings:
             def_string = b''
-        while len(self.strings) >= 0xFF00 and len(self.strings) < 0xFFFF:
+        while 0xFF00 <= len(self.strings) < 0xFFFF:
             self.strings.append(def_string)
         if isinstance(string, str) and self.string_mode == constants.string_mode_byte_strings:
             string = RawString(string, 0, mode=constants.raw_string_mode_string, lazy=True).encode()
