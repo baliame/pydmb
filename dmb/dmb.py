@@ -1,4 +1,3 @@
-import json
 import collections
 from . import constants
 
@@ -144,17 +143,103 @@ class Resource:
         self.hash = rhash
 
 
+astype_map = {
+    1: "mob",
+    2: "obj",
+    4: "text",
+    8: "num",
+    16: "file",
+    32: "turf",
+    128: "null",
+    256: "area",
+    1024: "sound",
+    2048: "message",
+    4096: "anything",
+}
+
+
+def resolve_astype(flags):
+    types = []
+    for pos in astype_map:
+        if flags & pos > 0:
+            types.append(astype_map[pos])
+    return types
+
+
+intype_map = {
+    1: "view",
+    2: "oview",
+    3: "usr.loc",
+    8: "usr",
+    16: "world",
+    64: "custom",
+}
+
+
+intype_has_parameter = ["view", "oview"]
+
+
+class Arg:
+    def __init__(self, name, astype=0, intype=1, inrange=125):
+        self.name = name
+        if isinstance(astype, list):
+            self.astype = astype
+        else:
+            self.astype = resolve_astype(astype)
+        if isinstance(intype, int):
+            self.intype = intype_map[intype]
+        else:
+            self.intype = intype
+        if not isinstance(inrange, Proc) and inrange == 125:
+            self.inrange = None
+        else:
+            self.inrange = inrange
+
+    def __str__(self):
+        data = self.name
+        if len(self.astype):
+            data += " as {0}".format("|".join(self.astype))
+        if self.intype is not None:
+            if self.intype != "custom":
+                if self.intype in intype_has_parameter:
+                    if self.inrange is not None:
+                        data += " in {0}({1})".format(self.intype, self.inrange)
+                    else:
+                        data += " in {0}()".format(self.intype)
+                else:
+                    data += " in {0}".format(self.intype)
+            else:
+                data += " in <proc:{0}>".format(self.inrange.argproc_id)
+
+    def __repr__(self):
+        return "Arg({0}, astype={1}, intype={2}, inrange={3})".format(repr(self.name), repr(self.astype), repr(self.intype), repr(self.inrange))
+
+
 class Proc:
     def __init__(self):
         self.path = 0
         self.name = 0
+        self.desc = 0
+        self.category = 0
         self.data = 0
         self.variable_list = 0
         self.argument_list = 0
 
-        self._unknown = 0
-        self._fdata1 = 0
-        self._fdata2 = 0
+        self.range = 0
+        self.access = 0
+        self.flags = 0
+        # 0x80: use extended flags
+        # 0x20: popup_menu
+        #
+        # 0x01: hidden
+        self._ufield3 = 0
+        self.ext_flags = 0
+        self.invisibility = 0
+
+        self.parameters = []
+        self.argproc_id = None
+        self.locals = []
+        self.defined_on = None
 
 
 class Var:
@@ -233,27 +318,35 @@ class Type:
         self.dir = 0
 
         self.text = 0
+        self.suffix = 0
 
         self.maptext = 0
         self.maptext_width = 0
         self.maptext_height = 0
+        self.maptext_x = 0
+        self.maptext_y = 0
 
         self.flags = 0
+        self.proc_list = 0
+        self.verb_list = 0
         self.variable_list = 0
         self.layer = 0.0
         self.builtin_variable_list = 0
 
         self.id = 0
-        self.resolved = False
+        self.resolved_vars = False
+        self.variables = None
+        self.procedures = None
+        self.verbs = None
+        self.procedures_own = {}
+        self.verbs_own = {}
 
         self._unknown1 = 0
         self._unknown2 = 0
+        self._unknown3 = 0
+        self._unknown4 = 0
         self._fdata1 = 0
-        self._fdata2 = 0
-        self._fdata3 = 0
         self._fdata4 = 0
-
-        self.variables = []
 
     def __json__(self):
         return {
@@ -262,3 +355,13 @@ class Type:
             "desc": self.desc,
             "parent": self.parent.path,
         }
+
+    def __str__(self):
+        return '"Type: {0}"'.format(self.path)
+
+    def __repr__(self):
+        return '"{0}"'.format(self.path)
+        try:
+            return 'type({0}, {1})'.format(self.path, self.parent.path)
+        except:
+            return 'type({0}, {1})'.format(self.path, self.parent)

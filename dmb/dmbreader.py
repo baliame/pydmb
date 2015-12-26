@@ -36,10 +36,9 @@ class TileGenerator:
 
 
 class Dmb:
-    def __init__(self, dmbname, throttle=False, verbose=False, string_mode=constants.string_mode_strings, check_string_crc=False, fully_populate_types=False):
-        self.string_mode = string_mode
+    def __init__(self, dmbname, throttle=False, verbose=False, string_mode=constants.string_mode_default, check_string_crc=False):
+        self.string_mode = string_mode if string_mode != constants.string_mode_default else contants.string_mode_byte_strings
         self.check_string_crc = check_string_crc
-        self.fully_populate_types = fully_populate_types
         self.reader = open(dmbname, 'rb')
         self.bit32 = False
         self.throttle = throttle
@@ -123,28 +122,10 @@ class Dmb:
 
         self.reader.close()
         self.reader = None
-        self.tree = ObjectTree()
-
-        self._populate_types()
-        if self.fully_populate_types:
-            self.tree.populate_variables(self)
 
     def __del__(self):
         if self.reader is not None:
             self.reader.close()
-
-    def insert_string(self, string):
-        def_string = ""
-        if self.string_mode == constants.string_mode_byte_strings:
-            def_string = b''
-        while 0xFF00 <= len(self.strings) < 0xFFFF:
-            self.strings.append(def_string)
-        if isinstance(string, str) and self.string_mode == constants.string_mode_byte_strings:
-            string = RawString(string, 0, mode=constants.raw_string_mode_string, lazy=True).encode()
-        elif isinstance(string, (bytes, bytearray)) and self.string_mode == constants.string_mode_strings:
-            string = RawString(string, 0, mode=constants.raw_string_mode_decrypted, lazy=True).decode()
-        self.strings.append(string)
-        return len(self.strings) - 1
 
     def _shift_coords(self, move_count, x, y, z):
         x += move_count
@@ -176,40 +157,8 @@ class Dmb:
                 tile = self.tile(x, y, z)
             tile.instances.append(self._resolve_instance(instanceid))
 
-    def _populate_types(self):
-        for t in self.types:
-            self.resolve_type(t)
-            self.tree.push(t)
-
     def _unpack_arch(self, bs):
         return struct.unpack("<" + (("I" if self.bit32 else "H") * int(len(bs) / (4 if self.bit32 else 2))), bs)
-
-    def resolve_type(self, t):
-        if t.resolved:
-            return t
-        t.path = self._resolve_string(t.path)
-        try:
-            t.parent = self._resolve_string(t.parent)
-        except:
-            t.parent = self.no_parent_type
-        t.name = self._resolve_string(t.name)
-        t.desc = self._resolve_string(t.desc)
-        # try:
-        #    vl = self._unpack_arch(self.data[t.variable_list])
-        #    print(t.path, self.data[t.variable_list], "->", vl)
-        #    skip = False
-        #    for vid in vl:
-        #        if skip:
-        #            skip = False
-        #            continue
-        #        print("*", self._resolve_string(self.variables[vid].name))
-        #        skip = True
-        #    # print([self._resolve_string(i) for i in self._unpack_arch(self.data[t.variable_list])])
-        # except:
-        #    if t.variable_list != 65535:
-        #        raise
-        t.resolved = True
-        return t
 
     def tile(self, x, y=None, z=None):
         if isinstance(x, tuple):
@@ -357,9 +306,17 @@ class Dmb:
                 curr._fdata1 = self._nbytes(4)
             curr.text = self._uarch()
             curr.suffix = self._uarch()  # suffix
-            curr._fdata2 = self._nbytesarch(8, 6)
+            curr.maptext_width = self._uint16()
+            curr.maptext_height = self._uint16()
+            if self.world.min_client > 507:
+                curr.maptext_x = self._uint16()
+                curr.maptext_y = self._uint16()
+            curr.maptext = self._uarch()
             curr.flags = self._uint32()
-            curr._fdata3 = self._nbytesarch(16, 8)
+            curr.verb_list = self._uarch()
+            curr.proc_list = self._uarch()
+            curr._unknown3 = self._uarch()
+            curr._unknown4 = self._uarch()
             curr.variable_list = self._uarch()
             curr.layer = self._float32()
             if self.world.min_client >= 500:
@@ -424,10 +381,14 @@ class Dmb:
             ret = Proc()
             ret.path = self._uarch()
             ret.name = self._uarch()
-            ret._fdata1 = self._nbytesarch(10, 6)
-            ret._unknown = self._uint8()
-            if ret._unknown & 0x80 > 0:
-                ret._fdata2 = self._nbytes(5)
+            ret.desc = self._uarch()
+            ret.category = self._uarch()
+            ret.range = self._uint8()
+            ret.access = self._uint8()
+            ret.flags = self._uint8()
+            if ret.flags & 0x80 > 0:
+                ret.ext_flags = self._uint32()
+                ret.invisibility = self._uint8()
             ret.data = self._uarch()
             ret.variable_list = self._uarch()
             ret.argument_list = self._uarch()
@@ -494,11 +455,36 @@ class Dmb:
     def _read_bytes_until(self, delimiter):
         return b''.join([b for b in self._bytegen(delimiter)])
 
+    def _resolve_data(self, dataid):
+        if dataid == 65535:
+            return None
+        try:
+            return self.data[dataid]
+        except:
+            print(dataid)
+            raise
+
+    def _resolve_resource(self, resourceid):
+        if resourceid == 65535:
+            return None
+        try:
+            return self.resources[resourceid]
+        except:
+            print(resourceid)
+            raise
+
     def _resolve_proc(self, procid):
         try:
             return self.procs[procid]
         except:
             print(procid)
+            raise
+
+    def _resolve_var(self, varid):
+        try:
+            return self.variables[varid]
+        except:
+            print(varid)
             raise
 
     def _resolve_instance(self, instanceid):
@@ -508,7 +494,7 @@ class Dmb:
             print(instanceid)
             raise
 
-    def _resolve_string(self, stringid):
+    def _resolve_string(self, stringid, mode=constants.string_mode_default):
         if stringid == 0xFFFF:
             return None
         ret = self.strings[stringid]
@@ -516,4 +502,10 @@ class Dmb:
             val = ret.decrypt()
             self.strings[stringid] = val
             ret = val
+        dcmode = self.string_mode if mode == constants.string_mode_default else mode
+        if dcmode != self.string_mode:
+            if dcmode == constants.string_mode_strings:
+                return RawString(ret, 0, mode=constants.raw_string_mode_decrypted).decode()
+            elif dcmode == constants.string_mode_byte_strings:
+                return RawString(ret, 0, mode=constants.raw_string_mode_string).encode()
         return ret

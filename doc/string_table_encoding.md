@@ -4,9 +4,9 @@ A string table entry has the following structure:
 
 Content name | Content type | Assigned meaning              | Byte length |
 ------------ | ------------ | ----------------------------- | ----------- |
-len          | sum(uint16)  | Length of the string          | n\*2         |
+len          | sum(uint16)  | Length of the string          | n\*2        |
 data         | byte[len]    | Data bytes                    | len         |
-*Total*      |              |                               | n\*2 + len   |
+*Total*      |              |                               | n\*2 + len  |
 
 To calculate the length, do the following algorithm:
 * Take note of your position in the file as a 16-bit integer (c)

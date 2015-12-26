@@ -28,6 +28,7 @@ Second byte | Text macro | Note                                                 
 0x19        | \underline |                                                                      |
 0x1b        | \font      |                                                                      |
 0x1c        | \color     |                                                                      |
+0x1e        | -          | Color reset macro, when the same color is used twice consecutively.  |
 0x1f        | \red       |                                                                      |
 0x20        | \green     |                                                                      |
 0x21        | \blue      |                                                                      |

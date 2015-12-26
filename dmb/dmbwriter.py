@@ -2,10 +2,8 @@ import struct
 from . import constants
 from .dmb import RawString, Type
 from .crypt import byond32
-import copy
 import numpy as np
 import io
-from blist import blist
 
 
 class DmbWriter:
@@ -141,45 +139,40 @@ class DmbWriter:
             self._uarch(last_match[2])
             self._uint8(rle)
 
-    def _get_strid(self, strid):
-        if strid is None:
-            return 65535
-        if not isinstance(strid, int):
-            try:  # so pythonic. also comments are hashtags. #pythonic
-                strid = self.dmb.strings.index(strid)
-            except:
-                strid = self.dmb.insert_string(strid)
-        return strid
-
-    def _strid(self, strid):
-        return self._uarch(self._get_strid(strid))
-
     def _write_types(self):
         type_count = len(self.dmb.types)
         self._uarch(type_count)
         for t in self.dmb.types:
-            self._strid(t.path)
-            self._strid(t.parent)
-            self._strid(t.name)
-            self._strid(t.desc)
-            self._strid(t.icon)  # TODO: may be wrong?
-            self._strid(t.icon_state)
+            self._uarch(t.path)
+            self._uarch(t.parent)
+            self._uarch(t.name)
+            self._uarch(t.desc)
+            self._uarch(t.icon)
+            self._uarch(t.icon_state)
             self._uint8(t.dir)
             self._uint8(t._unknown1)
             if t._unknown1 == 15:
                 self._bytes(t._fdata1)
-            self._strid(t.text)
-            self._strid(t.suffix)
-            self._bytes(t._fdata2)
+            self._uarch(t.text)
+            self._uarch(t.suffix)
+            self._uint16(t.maptext_width)
+            self._uint16(t.maptext_height)
+            if self.dmb.world.min_client > 507:
+                self._uint16(t.maptext_x)
+                self._uint16(t.maptext_y)
+            self._uarch(t.maptext)
             self._uint32(t.flags)
-            self._bytes(t._fdata3)
-            self._uarch(t.variable_list)  # TODO: reencode
+            self._uarch(t.verb_list)
+            self._uarch(t.proc_list)
+            self._uarch(t._unknown3)
+            self._uarch(t._unknown4)
+            self._uarch(t.variable_list)
             self._float32(t.layer)
             if self.dmb.world.min_client >= 500:
                 self._uint8(t._unknown2)
                 if t._unknown2 > 0:
                     self._bytes(t._fdata4)
-            self._uarch(t.builtin_variable_list)  # TODO: reencode
+            self._uarch(t.builtin_variable_list)
 
     def _ffwd(self, count):
         return self.writer.seek(count, io.SEEK_CUR)
@@ -228,37 +221,28 @@ class DmbWriter:
             self._uint16(int(dlen))
             self._bytes(data)
 
-    def _prep_proc_copy(self, proc):
-        ret = copy.copy(proc)
-        ret.path = self._get_strid(proc.path)
-        ret.name = self._get_strid(proc.name)
-        # TODO: unresolve data, lists
-        return ret
-
     def _write_procs(self):
         proc_count = len(self.written_procs)
         self._uarch(proc_count)
-        for proc in self.written_procs:
+        for proc in self.dmb.procs:
             self._uarch(proc.path)
             self._uarch(proc.name)
-            self._bytes(proc._fdata1)
-            self._uint8(proc._unknown)
-            if (proc._unknown & 0x80) > 0:
-                self._bytes(proc._fdata2)
+            self._uarch(proc.desc)
+            self._uarch(proc.category)
+            self._uint8(proc.range)
+            self._uint8(proc.access)
+            self._uint8(proc.flags)
+            if (proc.flags & 0x80) > 0:
+                self._uint32(proc.ext_flags)
+                self._uint8(proc.invisibility)
             self._uarch(proc.data)
             self._uarch(proc.variable_list)
             self._uarch(proc.argument_list)
 
-    def _prep_var_copy(self, var):
-        ret = copy.copy(var)
-        ret.name = self._get_strid(var.name)
-        # TODO: unresolve data, lists
-        return ret
-
     def _write_vars(self):
         var_count = len(self.written_vars)
         self._uarch(var_count)
-        for var in self.written_vars:
+        for var in self.dmb.vars:
             self._uint8(var.value._typeid)
             self._uint32(var.value._value)
             self._uarch(var.name)
@@ -303,46 +287,40 @@ class DmbWriter:
             self._uint32(r.hash)
             self._uint8(r.typeid)
 
-    def _prep_world_data(self):
-        written_world = copy.copy(self.dmb.world)
-        written_world.world_name = self._get_strid(written_world.world_name)
-        # TODO: there's probably more to deal with
-        return written_world
-
     def _write_extended_data(self):
-        self._uarch(self.written_world.default_mob)
-        self._uarch(self.written_world.default_turf)
-        self._uarch(self.written_world.default_area)
-        self._uarch(self.written_world.world_procs)
-        self._uarch(self.written_world.global_init)
-        self._uarch(self.written_world.world_domain)
-        self._uarch(self.written_world.world_name)
-        self._uint16(self.written_world.tick_lag)
-        self._uint16(self.written_world.unknown1)
-        self._uarch(self.written_world.client_type)
-        self._uarch(self.written_world.image_type)
-        self._uint8(self.written_world.lazy_eye)
-        self._uint8(self.written_world.client_dir)
-        self._uint8(self.written_world.control_freak)
-        self._uint16(self.written_world.unknown2)
-        self._uarch(self.written_world.client_script)
-        self._uint16(self.written_world.unknown3)
-        self._uint8(self.written_world.view_width)
-        self._uint8(self.written_world.view_height)
-        self._uarch(self.written_world.hub_password)
-        self._uarch(self.written_world.world_status)
-        self._uint16(self.written_world.unknown4)
-        self._uint16(self.written_world.unknown5)
-        self._uint32(self.written_world.version)
-        self._uint16(self.written_world.cache_lifespan)
-        self._uarch(self.written_world.default_command_text)
-        self._uarch(self.written_world.default_command_prompt)
-        self._uarch(self.written_world.hub_path)
-        self._uarch(self.written_world.unknown6)
-        self._uarch(self.written_world.unknown7)
-        self._uint16(self.written_world.icon_width)
-        self._uint16(self.written_world.icon_height)
-        self._uint16(self.written_world.map_format)
+        self._uarch(self.dmb.world.default_mob)
+        self._uarch(self.dmb.world.default_turf)
+        self._uarch(self.dmb.world.default_area)
+        self._uarch(self.dmb.world.world_procs)
+        self._uarch(self.dmb.world.global_init)
+        self._uarch(self.dmb.world.world_domain)
+        self._uarch(self.dmb.world.world_name)
+        self._uint16(self.dmb.world.tick_lag)
+        self._uint16(self.dmb.world.unknown1)
+        self._uarch(self.dmb.world.client_type)
+        self._uarch(self.dmb.world.image_type)
+        self._uint8(self.dmb.world.lazy_eye)
+        self._uint8(self.dmb.world.client_dir)
+        self._uint8(self.dmb.world.control_freak)
+        self._uint16(self.dmb.world.unknown2)
+        self._uarch(self.dmb.world.client_script)
+        self._uint16(self.dmb.world.unknown3)
+        self._uint8(self.dmb.world.view_width)
+        self._uint8(self.dmb.world.view_height)
+        self._uarch(self.dmb.world.hub_password)
+        self._uarch(self.dmb.world.world_status)
+        self._uint16(self.dmb.world.unknown4)
+        self._uint16(self.dmb.world.unknown5)
+        self._uint32(self.dmb.world.version)
+        self._uint16(self.dmb.world.cache_lifespan)
+        self._uarch(self.dmb.world.default_command_text)
+        self._uarch(self.dmb.world.default_command_prompt)
+        self._uarch(self.dmb.world.hub_path)
+        self._uarch(self.dmb.world.unknown6)
+        self._uarch(self.dmb.world.unknown7)
+        self._uint16(self.dmb.world.icon_width)
+        self._uint16(self.dmb.world.icon_height)
+        self._uint16(self.dmb.world.map_format)
 
     def write(self):
         if self.dmb.string_mode == constants.string_mode_strings:
@@ -363,10 +341,6 @@ class DmbWriter:
 
         self._write_types()
         self._write_mobs()
-
-        self.written_procs = blist([self._prep_proc_copy(proc) for proc in self.dmb.procs])
-        self.written_vars = blist([self._prep_var_copy(proc) for proc in self.dmb.variables])
-        self.written_world = self._prep_world_data()
 
         self._write_strings()
         self._write_data()

@@ -21,6 +21,8 @@ Content               | Content type           | Assigned meaning               
 `\n` (`0x0a`)         | Constant string        |                                  | 1              |  1                 |
 *Total*               |                        |                                  | varying (>=42) | 42                 |
 
+In other documents, we refer to these three variables as world_version, min_server and min_client respectively.
+
 ## Binary header
 * Start: `header_len`
 * Start in 507: 42

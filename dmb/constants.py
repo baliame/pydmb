@@ -8,6 +8,7 @@ raw_string_mode_string = 2     # passed data is readable string
 # DMB string mode
 string_mode_strings = 0       # self.strings will be a list of strings, control codes replaced by their byond equivalent
 string_mode_byte_strings = 1  # self.strings will be a list of bytearrays, with control codes left intact
+string_mode_default = 2       # alias for string_mode_byte_strings
 
 # CRC tab
 byond32_tab = [np.uint32(a) for a in [0x00000000, 0x000000af, 0x0000015e, 0x000001f1,
