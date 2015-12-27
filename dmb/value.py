@@ -106,7 +106,7 @@ decode_map = {
 }
 
 
-def decode(typeid, value):
+def decode_value(typeid, value):
     global decode_map
     if typeid in decode_map:
         return decode_map[typeid](typeid, value)

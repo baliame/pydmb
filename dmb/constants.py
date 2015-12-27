@@ -1,4 +1,7 @@
-import numpy as np
+try:
+    import numpy as np
+except:
+    from . import np_fallback as np
 
 # RawString string mode
 raw_string_mode_encrypted = 0  # passed data is encrypted bytes

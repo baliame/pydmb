@@ -60,10 +60,12 @@ def base_type_vars(path):
 
 
 class ObjectTree:
-    def __init__(self, tree={}, dmb=None, loaded=False):
+    def __init__(self, tree={}, dmb=None, loaded=False, procref=None):
         if dmb is not None and dmb.string_mode == constants.string_mode_byte_strings:
             raise TypeError("ObjectTrees cannot be used with undecoded strings.")
         self.tree = tree
+        if procref is not None:
+            self._resolve_proc_references_recursive(self.tree, self.procref)
 
         if loaded and tree != {}:
             self._resolve_tree_recursive(self.tree)
@@ -168,6 +170,7 @@ class ObjectTree:
             if p.path == 65535:
                 continue
             c = Proc()
+            c.id = p.id
             c.path = dmb._resolve_string(p.path)
             c.name = dmb._resolve_string(p.name)
             c.desc = dmb._resolve_string(p.desc)
@@ -240,6 +243,37 @@ class ObjectTree:
                 if vname not in t.verbs:
                     t.verbs[pname] = p.verbs[vname]
 
+    def _resolve_proc_references_recursive(self, currtree, proclist):
+        for k in currtree:
+            if k == ".":
+                t = currtree[k]
+                pr = {}
+                for pid in t.procedures:
+                    proc = proclist[pid]
+                    prname = proc.path.rsplit('/', 1)[1]
+                    pr[prname] = proc
+                t.procedures = pr
+                vr = {}
+                for pid in t.verbs:
+                    proc = proclist[pid]
+                    prname = proc.path.rsplit('/', 1)[1]
+                    vr[prname] = proc
+                t.verbs = vr
+                pro = {}
+                for pid in t.procedures_own:
+                    proc = proclist[pid]
+                    prname = proc.path.rsplit('/', 1)[1]
+                    pro[prname] = proc
+                t.procedures_own = pro
+                vro = {}
+                for pid in t.verbs_own:
+                    proc = proclist[pid]
+                    prname = proc.path.rsplit('/', 1)[1]
+                    vro[prname] = proc
+                t.verbs_own = vro
+            else:
+                self._resolve_proc_references_recursive(currtree[k], proclist)
+
     def _populate_procedures_recursive(self, currtree, dmb):
         for k in currtree:
             if k == '.':
@@ -288,8 +322,24 @@ class ObjectTree:
             curr_tree = curr_tree[part]
         curr_tree["."] = typeinst
 
+    def _aggregate_procedures_recursive(self, currtree):
+        res = {}
+        for k in currtree:
+            if k == ".":
+                for p in currtree[k].procedures:
+                    proc = currtree[k].procedures[p]
+                    res[proc.id] = proc
+                for v in currtree[k].verbs:
+                    verb = currtree[k].verbs[v]
+                    res[verb.id] = verb
+            else:
+                res += self._aggregate_procedures_recursive(currtree[k])
+
+    def _aggregate_procedures(self):
+        return self._aggregate_procedures_recursive(self.tree)
+
     def json(self):
-        return json.dumps(self.tree, cls=dmbjson.JSONEncoder, sort_keys=True, indent=2)
+        return json.dumps({"tree": self.tree, "procs": self._aggregate_procedures()}, cls=dmbjson.JSONEncoder, sort_keys=True, indent=2)
 
     def get_path(self, path):
         slash = b'/'

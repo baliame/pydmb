@@ -2,7 +2,12 @@ import struct
 from . import constants
 from .dmb import RawString, Type
 from .crypt import byond32
-import numpy as np
+
+try:
+    import numpy as np
+except:
+    from . import np_fallback as np
+
 import io
 
 

@@ -1,5 +1,8 @@
 from . import constants
-import numpy as np
+try:
+    import numpy as np
+except:
+    from . import np_fallback as np
 
 
 n_8 = np.uint8(8)

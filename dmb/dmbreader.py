@@ -1,10 +1,20 @@
 from .dmb import Tile, Mob, Proc, WorldData, Var, Instance, Resource, Type, RawString
 from .dmbwriter import DmbWriter
 from .tree import ObjectTree
-from . import value, constants
+from .value import *
+from .constants import *
 from .crypt import byond32
-from blist import *
-import numpy as np
+
+try:
+    from blist import *
+except:
+    blist = list
+
+try:
+    import numpy as np
+except:
+    from . import np_fallback as np
+
 import re
 import io
 import struct
@@ -36,8 +46,8 @@ class TileGenerator:
 
 
 class Dmb:
-    def __init__(self, dmbname, throttle=False, verbose=False, string_mode=constants.string_mode_default, check_string_crc=False):
-        self.string_mode = string_mode if string_mode != constants.string_mode_default else contants.string_mode_byte_strings
+    def __init__(self, dmbname, throttle=False, verbose=False, string_mode=string_mode_default, check_string_crc=False):
+        self.string_mode = string_mode if string_mode != string_mode_default else string_mode_byte_strings
         self.check_string_crc = check_string_crc
         self.reader = open(dmbname, 'rb')
         self.bit32 = False
@@ -281,8 +291,8 @@ class Dmb:
     def _throttle(self):
         if self.throttle:
             self.ops += 1
-            if self.ops >= 1000:
-                time.sleep(0.5)
+            if self.ops >= 2000:
+                time.sleep(0.25)
                 self.ops = 0
 
     def _typegen(self, count):
@@ -359,9 +369,9 @@ class Dmb:
             string = RawString(bytearray(estr), key, lazy=True)
             if self.check_string_crc:
                 self._crc(string.decrypt())
-            if self.string_mode == constants.string_mode_byte_strings:
+            if self.string_mode == string_mode_byte_strings:
                 yield string.decrypt()
-            elif self.string_mode == constants.string_mode_strings:
+            elif self.string_mode == string_mode_strings:
                 yield string.decode()
             self._throttle()
 
@@ -377,8 +387,11 @@ class Dmb:
             self._throttle()
 
     def _procgen(self, count):
+        pid = 0
         while count > 0:
             ret = Proc()
+            ret.id = pid
+            pid += 1
             ret.path = self._uarch()
             ret.name = self._uarch()
             ret.desc = self._uarch()
@@ -402,7 +415,7 @@ class Dmb:
             typeid = self._uint8()
             typeval = self._uint32()
             ret.name = self._uarch()
-            ret.value = value.decode(typeid, typeval)
+            ret.value = decode_value(typeid, typeval)
             count -= 1
             yield ret
             self._throttle()
@@ -413,7 +426,7 @@ class Dmb:
             typeid = self._uint8()
             typeval = self._uint32()
             ret.initializer = self._uarch()
-            ret.value = value.decode(typeid, typeval)
+            ret.value = decode_value(typeid, typeval)
             count -= 1
             yield ret
             self._throttle()
@@ -494,7 +507,7 @@ class Dmb:
             print(instanceid)
             raise
 
-    def _resolve_string(self, stringid, mode=constants.string_mode_default):
+    def _resolve_string(self, stringid, mode=string_mode_default):
         if stringid == 0xFFFF:
             return None
         ret = self.strings[stringid]
@@ -502,10 +515,10 @@ class Dmb:
             val = ret.decrypt()
             self.strings[stringid] = val
             ret = val
-        dcmode = self.string_mode if mode == constants.string_mode_default else mode
+        dcmode = self.string_mode if mode == string_mode_default else mode
         if dcmode != self.string_mode:
-            if dcmode == constants.string_mode_strings:
-                return RawString(ret, 0, mode=constants.raw_string_mode_decrypted).decode()
-            elif dcmode == constants.string_mode_byte_strings:
-                return RawString(ret, 0, mode=constants.raw_string_mode_string).encode()
+            if dcmode == string_mode_strings:
+                return RawString(ret, 0, mode=raw_string_mode_decrypted).decode()
+            elif dcmode == string_mode_byte_strings:
+                return RawString(ret, 0, mode=raw_string_mode_string).encode()
         return ret

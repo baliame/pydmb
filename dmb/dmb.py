@@ -236,6 +236,8 @@ class Proc:
         self.ext_flags = 0
         self.invisibility = 0
 
+        self.id = 0
+
         self.parameters = []
         self.argproc_id = None
         self.locals = []
@@ -306,6 +308,10 @@ class Tile:
         self.instances = []
 
 
+def extract_pids(pdict):
+    return [pdict[key].id for key in pdict]
+
+
 class Type:
     def __init__(self, path, parent):
         self.path = path
@@ -354,6 +360,11 @@ class Type:
             "name": self.name,
             "desc": self.desc,
             "parent": self.parent.path,
+            "variables": self.variables,
+            "procedures": [pid for pid in extract_pids(self.procedures)],
+            "verbs": [pid for pid in extract_pids(self.verbs)],
+            "procedures_own": [pid for pid in extract_pids(self.procedures_own)],
+            "verbs_own": [pid for pid in extract_pids(self.verbs_own)],
         }
 
     def __str__(self):
