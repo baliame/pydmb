@@ -1,4 +1,4 @@
-from .dmb import Type, Proc, Arg, resolve_astype
+from .dmb import Type, Proc, Arg
 from . import json as dmbjson
 from . import constants
 import json
@@ -6,7 +6,9 @@ import struct
 
 
 def tree_from_json(jdict):
-    tree = ObjectTree(tree=jdict)
+    lprocs = [Proc.from_json(j) for j in jdict["procs"]]
+    jprocs = dict((p.id, p) for p in lprocs)
+    tree = ObjectTree(tree=jdict["tree"], procref=jprocs)
     tree.resolve_parent_refs_recursive(tree.tree)
     return tree
 
@@ -40,6 +42,7 @@ movable_vars = set(["animate_movement", "bound_x", "bound_y", "bound_width", "bo
 base_type_variables = {
     "area": atom_vars,
     "atom": atom_vars,
+    "client": set(["address", "authenticate", "bounds", "byond_version", "CGI", "ckey", "color", "command_text", "connection", "control_freak", "computer_id", "default_verb_category", "dir", "edge_limit", "eye", "gender", "images", "inactivity", "key", "lazy_eye", "mob", "mouse_pointer_icon", "perspective", "pixel_x", "pixel_y", "pixel_z", "glide_size", "preload_rsc", "screen", "show_map", "show_popup_menus", "show_verb_panel", "statobj", "statpanel", "verbs", "view", "virtual_eye"]),
     "datum": datum_vars,
     "image": set(["loc"]),
     "list": set(["len"]),
@@ -50,6 +53,13 @@ base_type_variables = {
     "turf": atom_vars,
     "world": set(["address", "area", "byond_version", "cache_lifespan", "contents", "cpu", "executor", "fps", "game_state", "host", "hub", "hub_password", "icon_size", "internet_address", "log", "loop_checks", "map_format", "maxx", "maxy", "maxz", "mob", "name", "params", "port", "realtime", "reachable", "sleep_offline", "status", "system_type", "tick_lag", "time", "timeofday", "turf", "url", "version", "view", "visibility"]),
 }
+
+
+def ndupdate(dict1, dict2):
+    for k in dict2:
+        if k not in dict1:
+            dict1[k] = dict2[k]
+    return dict1
 
 
 def base_type_vars(path):
@@ -146,8 +156,8 @@ class ObjectTree:
         if p is not dmb.no_parent_type:
             if p.variables is None:
                 self._resolve_and_collect_vars_recursive(p, dmb)
-            varset |= p.variables
-        t.variables = varset
+            varset |= set(p.variables)
+        t.variables = list(varset)
 
     def _populate_variables_recursive(self, currtree, dmb):
         for k in currtree:
@@ -228,7 +238,7 @@ class ObjectTree:
         for pname in t.procedures_own:
             t.procedures[pname] = t.procedures_own[pname]
         for vname in t.verbs_own:
-            t.verbs[pname] = t.verbs_own[vname]
+            t.verbs[vname] = t.verbs_own[vname]
         p = t.parent
         if p is dmb.no_parent_type:
             return
@@ -333,7 +343,8 @@ class ObjectTree:
                     verb = currtree[k].verbs[v]
                     res[verb.id] = verb
             else:
-                res += self._aggregate_procedures_recursive(currtree[k])
+                ndupdate(res, self._aggregate_procedures_recursive(currtree[k]))
+        return res
 
     def _aggregate_procedures(self):
         return self._aggregate_procedures_recursive(self.tree)

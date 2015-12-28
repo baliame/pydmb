@@ -73,12 +73,12 @@ class Dmb:
 
         type_count = self._uarch()
         if verbose:
-            print("{0} types".format(type_count))
+            print("{0} types ({1})".format(type_count, hex(self.reader.seek(0, io.SEEK_CUR))))
         self.types = blist([t for t in self._typegen(type_count)])
 
         mob_count = self._uarch()
         if verbose:
-            print("{0} mobs".format(mob_count))
+            print("{0} mobs ({1})".format(mob_count, hex(self.reader.seek(0, io.SEEK_CUR))))
         self.mobs = blist([m for m in self._mobgen(mob_count)])
 
         self.strcrc = np.uint32(0)
@@ -333,6 +333,10 @@ class Dmb:
                 curr._unknown2 = self._uint8()
                 if curr._unknown2 > 0:
                     curr._fdata4 = self._nbytes(24)
+            if self.world.min_client > 508:
+                curr.use_color_matrix = self._uint8()
+                if curr.use_color_matrix > 0:
+                    curr.color_matrix = self._nbytes(80)
             curr.builtin_variable_list = self._uarch()
             count -= 1
             yield curr

@@ -204,15 +204,36 @@ class Arg:
                 if self.intype in intype_has_parameter:
                     if self.inrange is not None:
                         data += " in {0}({1})".format(self.intype, self.inrange)
-                    else:
+                    elif self.intype != "view":
                         data += " in {0}()".format(self.intype)
                 else:
                     data += " in {0}".format(self.intype)
             else:
                 data += " in <proc:{0}>".format(self.inrange.argproc_id)
+        return data
 
     def __repr__(self):
         return "Arg({0}, astype={1}, intype={2}, inrange={3})".format(repr(self.name), repr(self.astype), repr(self.intype), repr(self.inrange))
+
+    def __json__(self):
+        return {
+            "name": self.name,
+            "astype": self.astype,
+            "intype": self.intype,
+            "inrange": self.inrange,
+        }
+
+    @classmethod
+    def from_json(j):
+        ret = Arg()
+        ret.name = j["name"]
+        ret.astype = j["astype"]
+        ret.intype = j["intype"]
+        if isinstance(j["inrange"], dict):
+            ret.inrange = Proc.from_json(j["inrange"])
+        else:
+            ret.inrange = j["inrange"]
+        return ret
 
 
 class Proc:
@@ -242,6 +263,39 @@ class Proc:
         self.argproc_id = None
         self.locals = []
         self.defined_on = None
+
+    def __json__(self):
+        return {
+            "path": self.path,
+            "name": self.name,
+            "desc": self.desc,
+            "category": self.category,
+            "parameters": self.parameters,
+            "range": self.range,
+            "access": self.access,
+            "ext_flags": self.ext_flags,
+            "invisibility": self.invisibility,
+            "argproc_id": self.argproc_id,
+            "id": self.id,
+        }
+
+    @classmethod
+    def from_json(j):
+        ret = Proc()
+        ret.path = j["path"]
+        ret.name = j["name"]
+        ret.desc = j["desc"]
+        ret.category = j["category"]
+        ret.range = j["range"]
+        ret.access = j["access"]
+        ret.ext_flags = j["ext_flags"]
+        ret.invisibility = j["invisibility"]
+        ret.argproc_id = j["argproc_id"]
+        ret.id = j["id"]
+        ret.parameters = []
+        for entry in j["parameters"]:
+            ret.parameters.append(Arg.from_json(entry))
+        return ret
 
 
 class Var:
