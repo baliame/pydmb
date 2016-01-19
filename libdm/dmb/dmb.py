@@ -180,7 +180,7 @@ intype_has_parameter = ["view", "oview"]
 
 
 class Arg:
-    def __init__(self, name, astype=0, intype=1, inrange=125):
+    def __init__(self, name, astype=0, intype=1, inrange=125, variadic=False, optional=False, default=None):
         self.name = name
         if isinstance(astype, list):
             self.astype = astype
@@ -194,9 +194,18 @@ class Arg:
             self.inrange = None
         else:
             self.inrange = inrange
+        self.variadic = variadic
+        self.optional = optional
+        self.default = default
 
     def __str__(self):
         data = self.name
+        if self.default is not None:
+            data += "={0}".format(str(self.default))
+        if self.variadic:
+            data += "..."
+        if self.optional:
+            data = "[{0}]".format(data)
         if len(self.astype):
             data += " as {0}".format("|".join(self.astype))
         if self.intype is not None:
@@ -213,7 +222,7 @@ class Arg:
         return data
 
     def __repr__(self):
-        return "Arg({0}, astype={1}, intype={2}, inrange={3})".format(repr(self.name), repr(self.astype), repr(self.intype), repr(self.inrange))
+        return "Arg({0}, astype={1}, intype={2}, inrange={3}, variadic={4}, optional={5})".format(repr(self.name), repr(self.astype), repr(self.intype), repr(self.inrange), repr(self.variadic), repr(self.optional))
 
     def __json__(self):
         return {
@@ -263,6 +272,17 @@ class Proc:
         self.argproc_id = None
         self.locals = []
         self.defined_on = None
+        self.is_global = False
+
+    @classmethod
+    def Global(name, desc, params):
+        ret = Proc()
+        ret.path = name
+        ret.name = name
+        ret.desc = desc
+        ret.parameters = params
+        ret.is_global = True
+        return ret
 
     def __json__(self):
         return {

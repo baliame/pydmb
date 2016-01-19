@@ -1,6 +1,5 @@
 from .dmb import Tile, Mob, Proc, WorldData, Var, Instance, Resource, Type, RawString
 from .dmbwriter import DmbWriter
-from .tree import ObjectTree
 from .value import *
 from .constants import *
 from .crypt import byond32

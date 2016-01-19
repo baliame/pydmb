@@ -1,3 +1,12 @@
+def seterr(all=None, divide=None, over=None, under=None, invalid=None):
+    return {
+        'divide': None,
+        'over': None,
+        'under': None,
+        'invalid': None,
+    }
+
+
 class uint8:
     def __init__(self, val):
         self.val = val & 0xFF
